@@ -11,7 +11,9 @@ lookup_muni(year, name_muni = NULL, code_muni = NULL)
 
 \item{name_muni}{The municipality name to be looked up.}
 
-\item{code_muni}{The municipality code to be looked up.}
+\item{code_muni}{The 7-digit IBGE municipality code or the 6-digit DATASUS
+code without its check digit. A 6-digit code must identify a unique
+municipality in the requested year.}
 }
 \value{
 A \code{data.frame} with 13 columns identifying the geographies information
