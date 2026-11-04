@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import math
+import numbers
+
 import duckdb
 import pandas as pd
 
@@ -11,7 +14,9 @@ def _format_name(name: str) -> str:
     return utils.strip_accents(name)
 
 
-def _fuzzy_match_name(df: pd.DataFrame, target: str, threshold: float = 0.9) -> pd.DataFrame:
+def _fuzzy_match_name(
+    df: pd.DataFrame, target: str, threshold: float = 0.9
+) -> pd.DataFrame:
     """Rows tied at the best Jaro similarity to ``target`` on the ``_fmt`` column.
 
     Uses DuckDB's built-in ``jaro_similarity`` (same metric and scale as the
@@ -80,12 +85,20 @@ def lookup_muni(
         return df
 
     if code_muni is not None:
-        if isinstance(code_muni, float) and code_muni.is_integer():
+        if isinstance(code_muni, numbers.Integral):
+            code_muni = int(code_muni)
+        elif isinstance(code_muni, numbers.Real):
+            if not math.isfinite(code_muni) or int(code_muni) != code_muni:
+                raise ValueError(
+                    f"Please insert a valid municipality code: {code_muni}"
+                )
             code_muni = int(code_muni)
         code = str(code_muni).strip()
         if not code.isdigit() or len(code) not in (6, 7):
             raise ValueError(f"Please insert a valid municipality code: {code_muni}")
-        codes = df["code_muni"].astype("int64")
+        # Missing codes in unrelated rows must not invalidate a valid lookup.
+        codes = pd.to_numeric(df["code_muni"], errors="coerce")
+        codes = codes.where(codes.notna() & (codes % 1 == 0))
         if len(code) == 6:
             # 6-digit codes (used by DATASUS) omit the IBGE check digit.
             codes = codes // 10

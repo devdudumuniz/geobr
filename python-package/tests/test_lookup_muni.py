@@ -1,11 +1,11 @@
 import importlib
 
-import pytest
-import pandas as pd
 import geopandas as gpd
-from shapely.geometry import Point
-
+import numpy as np
+import pandas as pd
+import pytest
 from geobr.lookup_muni import lookup_muni
+from shapely.geometry import Point
 
 
 @pytest.fixture
@@ -70,7 +70,7 @@ def test_lookup_no_code_found(mock_seat, monkeypatch):
 def test_lookup_no_name_found(mock_seat, monkeypatch):
     _patch_seat(monkeypatch, mock_seat)
     with pytest.raises(ValueError, match="valid municipality name"):
-        lookup_muni(year=2010, name_muni='Brasília')
+        lookup_muni(year=2010, name_muni="Brasília")
 
 
 def test_lookup_fuzzy_name_with_apostrophe(monkeypatch):
@@ -128,6 +128,25 @@ def test_lookup_6_digit_code_with_float_codes(mock_seat, monkeypatch):
     _patch_seat(monkeypatch, seat)
     out = lookup_muni(code_muni=355030, year=2010)
     assert out.iloc[0]["name_muni"] == "São Paulo"
+
+
+def test_lookup_ignores_missing_code_in_other_row(mock_seat, monkeypatch):
+    seat = mock_seat.assign(code_muni=[3304557.0, np.nan])
+    _patch_seat(monkeypatch, seat)
+    assert lookup_muni(code_muni=3304557, year=2010).iloc[0]["code_muni"] == 3304557
+    assert lookup_muni(code_muni=330455, year=2010).iloc[0]["code_muni"] == 3304557
+
+
+def test_lookup_accepts_numpy_integral_float(mock_seat, monkeypatch):
+    _patch_seat(monkeypatch, mock_seat)
+    out = lookup_muni(code_muni=np.float32(3304557), year=2010)
+    assert out.iloc[0]["code_muni"] == 3304557
+
+
+def test_lookup_rejects_oversized_integer_as_value_error(mock_seat, monkeypatch):
+    _patch_seat(monkeypatch, mock_seat)
+    with pytest.raises(ValueError, match="valid municipality code"):
+        lookup_muni(code_muni=10**400, year=2010)
 
 
 def test_lookup_no_6_digit_code_found(mock_seat, monkeypatch):
