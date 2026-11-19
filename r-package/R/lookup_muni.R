@@ -6,7 +6,9 @@
 #'
 #' @template year
 #' @param name_muni The municipality name to be looked up.
-#' @param code_muni The municipality code to be looked up.
+#' @param code_muni The 7-digit IBGE municipality code or the 6-digit DATASUS
+#'   code without its check digit. A 6-digit code must identify a unique
+#'   municipality in the requested year.
 #' @return A `data.frame` with 13 columns identifying the geographies information
 #'         of that municipality.
 #'
@@ -66,7 +68,7 @@ lookup_muni <- function(year,
 
   # return ALL -----------------------------------------------------------------------
 
-  if (any(name_muni == "all", code_muni == "all")) {
+  if (isTRUE(any(name_muni == "all", code_muni == "all"))) {
     return(df)
     }
 
@@ -148,22 +150,54 @@ lookup_muni <- function(year,
 
   # search code -----------------------------------------------------------------------
 
-  # code_muni has priority over other arguments
-  if (is.numeric(code_muni) | is.character(code_muni)) {
+  return(.lookup_muni_code(df, code_muni, year))
 
-    x <- as.numeric(code_muni)
+}
 
-    # Filter muni code
-    lookup_filter <- df |>
-      dplyr::filter(code_muni == x)
+.lookup_muni_code <- function(df, code_muni, year) {
+  invalid_code <- function() {
+    cli::cli_abort("Please insert a valid municipality code")
+  }
 
-    # erro ?
-    if (nrow(lookup_filter) == 0) {
-      cli::cli_abort("Please insert a valid municipality code")
+  if (length(code_muni) != 1L || is.na(code_muni) ||
+      !(is.numeric(code_muni) || is.character(code_muni))) {
+    invalid_code()
+  }
+
+  if (is.numeric(code_muni)) {
+    if (!is.finite(code_muni) || code_muni != trunc(code_muni)) {
+      invalid_code()
     }
+    code <- format(code_muni, scientific = FALSE, trim = TRUE)
+  } else {
+    code <- trimws(code_muni)
+  }
 
-    return(lookup_filter)
+  if (!grepl("^[0-9]{6,7}$", code)) {
+    invalid_code()
+  }
 
-    }
+  raw_codes <- df$code_muni
+  if (is.factor(raw_codes)) {
+    raw_codes <- as.character(raw_codes)
+  }
+  codes <- suppressWarnings(as.numeric(raw_codes))
+  valid <- !is.na(codes) & is.finite(codes) & codes == trunc(codes)
+  matches <- if (nchar(code) == 6L) {
+    valid & codes %/% 10 == as.numeric(code)
+  } else {
+    valid & codes == as.numeric(code)
+  }
+  out <- df[which(matches), , drop = FALSE]
 
+  if (nchar(code) == 6L && nrow(out) > 1L) {
+    cli::cli_abort(paste0(
+      "The 6-digit code ", code, " matches ", nrow(out),
+      " municipalities in ", year, ". Please use the 7-digit code."
+    ))
+  }
+  if (nrow(out) == 0L) {
+    invalid_code()
+  }
+  out
 }
